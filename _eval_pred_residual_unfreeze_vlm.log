@@ -1,0 +1,76 @@
+========================================
+Wave 1a: compare_pred_residual_1_unfreeze_vlm on GPUs 0-3
+========================================
+========================================
+Wave 1b: compare_pred_residual_2_unfreeze_vlm spatial/object/goal on 4-6, then long on 4
+========================================
+[22:48:43] START compare_pred_residual_2_unfreeze_vlm | libero_spatial | GPU 4 | port 19120 | include_state
+[22:48:43] START compare_pred_residual_2_unfreeze_vlm | libero_object | GPU 5 | port 19121 | include_state
+[22:48:43] START compare_pred_residual_1_unfreeze_vlm | libero_spatial | GPU 0 | port 19110 | include_state
+[22:48:43] START compare_pred_residual_2_unfreeze_vlm | libero_goal | GPU 6 | port 19122 | include_state
+[22:48:43] START compare_pred_residual_1_unfreeze_vlm | libero_object | GPU 1 | port 19111 | include_state
+[22:48:43] START compare_pred_residual_1_unfreeze_vlm | libero_10 | GPU 3 | port 19113 | include_state
+[22:48:43] START compare_pred_residual_1_unfreeze_vlm | libero_goal | GPU 2 | port 19112 | include_state
+[01:05:39] DONE compare_pred_residual_1_unfreeze_vlm | libero_goal
+INFO:root:Total success rate: 0.958
+---
+[01:08:48] DONE compare_pred_residual_2_unfreeze_vlm | libero_goal
+INFO:root:Total success rate: 0.94
+---
+[01:18:22] DONE compare_pred_residual_1_unfreeze_vlm | libero_spatial
+INFO:root:Total success rate: 0.99
+---
+[01:18:22] DONE compare_pred_residual_2_unfreeze_vlm | libero_spatial
+INFO:root:Total success rate: 0.988
+---
+[01:25:56] DONE compare_pred_residual_2_unfreeze_vlm | libero_object
+INFO:root:Total success rate: 0.996
+---
+[01:25:56] START compare_pred_residual_2_unfreeze_vlm | libero_10 | GPU 4 | port 19123 | include_state
+[01:26:35] DONE compare_pred_residual_1_unfreeze_vlm | libero_object
+INFO:root:Total success rate: 1.0
+---
+[02:34:09] DONE compare_pred_residual_1_unfreeze_vlm | libero_10
+INFO:root:Total success rate: 0.918
+---
+[03:53:01] DONE compare_pred_residual_2_unfreeze_vlm | libero_10
+INFO:root:Total success rate: 0.834
+---
+========================================
+Wave 2: compare_pred_residual_3_unfreeze_vlm on GPUs 0-3
+========================================
+[03:53:01] START compare_pred_residual_3_unfreeze_vlm | libero_object | GPU 1 | port 19131 | include_state
+[03:53:01] START compare_pred_residual_3_unfreeze_vlm | libero_goal | GPU 2 | port 19132 | include_state
+[03:53:01] START compare_pred_residual_3_unfreeze_vlm | libero_spatial | GPU 0 | port 19130 | include_state
+[03:53:01] START compare_pred_residual_3_unfreeze_vlm | libero_10 | GPU 3 | port 19133 | include_state
+[05:21:53] DONE compare_pred_residual_3_unfreeze_vlm | libero_goal
+INFO:root:Total success rate: 0.928
+---
+[05:26:44] DONE compare_pred_residual_3_unfreeze_vlm | libero_spatial
+INFO:root:Total success rate: 0.966
+---
+[05:33:28] DONE compare_pred_residual_3_unfreeze_vlm | libero_object
+INFO:root:Total success rate: 0.978
+---
+[06:48:27] DONE compare_pred_residual_3_unfreeze_vlm | libero_10
+INFO:root:Total success rate: 0.798
+---
+
+========================================
+Summary Pred Residual Unfreeze-VLM (with state)
+---- compare_pred_residual_1_unfreeze_vlm ----
+  libero_spatial: INFO:root:Total success rate: 0.99
+  libero_object: INFO:root:Total success rate: 1.0
+  libero_goal: INFO:root:Total success rate: 0.958
+  libero_10: INFO:root:Total success rate: 0.918
+---- compare_pred_residual_2_unfreeze_vlm ----
+  libero_spatial: INFO:root:Total success rate: 0.988
+  libero_object: INFO:root:Total success rate: 0.996
+  libero_goal: INFO:root:Total success rate: 0.94
+  libero_10: INFO:root:Total success rate: 0.834
+---- compare_pred_residual_3_unfreeze_vlm ----
+  libero_spatial: INFO:root:Total success rate: 0.966
+  libero_object: INFO:root:Total success rate: 0.978
+  libero_goal: INFO:root:Total success rate: 0.928
+  libero_10: INFO:root:Total success rate: 0.798
+========================================

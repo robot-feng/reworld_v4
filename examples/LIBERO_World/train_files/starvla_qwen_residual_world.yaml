@@ -1,0 +1,65 @@
+# Custom-only overlay. The launcher merges this over the official
+# examples/LIBERO/train_files/starvla_cotrain_libero.yaml at runtime.
+run_id: qwen_residual_world
+wandb_project: starVLA_Libero_World
+
+framework:
+  name: QwenResidualWorld
+
+  vision_encoder:
+    encoder_type: dinov3
+    model_name: dinov3_vits16
+    image_size: 256
+
+  residual_world:
+    hidden_dim: 512
+    num_layers: 4
+    num_heads: 8
+    head_dim: 64
+    mlp_ratio: 4.0
+    dropout: 0.0
+    max_sequence_length: 4096
+    absorbing_horizon: 500
+    action_context_dim: 512
+
+  vision_view_indices: all
+  connect_layer_index: -1
+  inference_horizon: 10000
+  world_loss_weight: 1.0
+  world_mid_loss_weight: 0.5
+  world_rollout_loss_weight: 0.5
+  action_loss_weight: 1.0
+
+  action_model:
+    action_model_type: LayerwiseFM
+    add_pos_embed: true
+    max_seq_len: 1024
+    repeated_diffusion_steps: 4
+    noise_beta_alpha: 1.5
+    noise_beta_beta: 1.0
+    noise_s: 0.999
+    num_timestep_buckets: 1000
+    num_inference_timesteps: 4
+    num_target_vision_tokens: 32
+    diffusion_model_cfg:
+      attention_head_dim: 64
+      dropout: 0.1
+      final_dropout: true
+      interleave_self_attention: true
+      use_canonical_forward: true
+      norm_type: ada_norm
+      output_dim: 512
+      positional_embeddings: null
+
+datasets:
+  vla_data:
+    data_mix: libero_residual_world_all
+    trajectory_max_horizon: 500
+    trajectory_beta_alpha: 2.5
+    trajectory_beta_beta: 1.0
+
+trainer:
+  freeze_modules: qwen_vl_interface,vision_encoder
+  learning_rate:
+    residual_world: 5.0e-05
+    world_to_action: 5.0e-05

@@ -1,0 +1,110 @@
+# Experiment B — Stage 1: World model pre-training (action_loss_weight=0)
+# Train residual world model only for 20000 steps; action head is frozen.
+run_id: exp_b_stage1_world_abs
+run_root_dir: /9950backfile/zhangyafei/reworld_v4/playground/Checkpoints
+seed: 42
+wandb_entity: local
+wandb_project: starVLA_QRWP_ablation
+is_debug: false
+version_id: "0.21"
+
+framework:
+  name: QwenResidualWorldPrefill
+
+  qwenvl:
+    base_vlm: /9950backfile/zhangyafei/Qwen3.5-0.8B
+    attn_implementation: sdpa
+
+  vision_encoder:
+    encoder_type: radio
+    model_name: nvidia/C-RADIOv4-SO400M
+    model_path: /9950backfile/zhangyafei/C-RADIOv4-SO400M
+    image_size: 256
+
+  residual_world:
+    hidden_dim: 512
+    num_layers: 4
+    num_heads: 8
+    head_dim: 64
+    mlp_ratio: 4.0
+    dropout: 0.0
+    max_sequence_length: 4096
+    absorbing_horizon: 500
+    num_action_queries: 8
+
+  action_model:
+    action_model_type: LayerwiseFM
+    add_pos_embed: true
+    max_seq_len: 1024
+    action_dim: 7
+    state_dim: 8
+    action_horizon: 8
+    repeated_diffusion_steps: 4
+    noise_beta_alpha: 1.5
+    noise_beta_beta: 1.0
+    noise_s: 0.999
+    num_timestep_buckets: 1000
+    num_inference_timesteps: 4
+    num_target_vision_tokens: 32
+    diffusion_model_cfg:
+      attention_head_dim: 64
+      dropout: 0.1
+      final_dropout: true
+      interleave_self_attention: true
+      norm_type: ada_norm
+      output_dim: 512
+      positional_embeddings: null
+
+  vision_view_indices: all
+  connect_layer_index: -1
+  inference_horizon: 8
+  world_loss_weight: 1.0
+  world_mid_loss_weight: 0.5
+  world_rollout_loss_weight: 0.5
+  action_loss_weight: 1.0e-08          # near-zero: functionally disabled, but keeps DeepSpeed ZeRO happy
+
+datasets:
+  vla_data:
+    dataset_py: lerobot_datasets
+    data_root_dir: /9950backfile/zhangyafei/reworld_v2/playground/Datasets/libero
+    data_mix: libero_residual_world_all
+    action_mode: abs
+    sequential_step_sampling: false
+    CoT_prompt: >-
+      Your task is {instruction}. To identify the key objects for your task.
+      Locate their bounding boxes in [x1,y1,x2,y2] format.
+    per_device_batch_size: 16
+    load_all_data_for_training: false
+    video_backend: torchvision_av
+    include_state: true
+    trajectory_max_horizon: 500
+    trajectory_beta_alpha: 2.5
+    trajectory_beta_beta: 1.0
+
+trainer:
+  max_train_steps: 20000
+  num_warmup_steps: 2000
+  save_interval: 5000
+  eval_interval: 200
+  learning_rate:
+    base: 2.5e-05
+    qwen_vl_interface: 1.0e-05
+    action_model: 1.0e-04
+    residual_world: 5.0e-05
+  lr_scheduler_type: cosine_with_min_lr
+  scheduler_specific_kwargs:
+    min_lr: 1.0e-06
+  freeze_modules: qwen_vl_interface,vision_encoder
+  loss_scale:
+    vla: 1.0
+  max_grad_norm: 1.0
+  weight_decay: 0.0
+  logging_frequency: 10
+  gradient_clipping: 1.0
+  gradient_accumulation_steps: 1
+  gradient_checkpointing: true
+  optimizer:
+    name: AdamW
+    betas: [0.9, 0.95]
+    eps: 1.0e-08
+    weight_decay: 1.0e-08
