@@ -45,7 +45,7 @@ eval_one() {
   env -u DEBUG CUDA_VISIBLE_DEVICES="${gpu}" PYTHONPATH="${STARVLA_DIR}" \
     PYTHONUNBUFFERED=1 NO_ALBUMENTATIONS_UPDATE=1 \
     HF_ENDPOINT=https://hf-mirror.com HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
-    "${STARVLA_PYTHON}" deployment/model_server/server_policy.py \
+    "${STARVLA_PYTHON}" examples/LIBERO_World/eval_files/server_policy.py \
     --ckpt_path "${ckpt}" --port "${port}" --use_bf16 --idle_timeout -1 \
     >"${server_log}" 2>&1 &
   local server_pid=$!

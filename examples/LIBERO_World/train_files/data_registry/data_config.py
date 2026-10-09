@@ -18,13 +18,35 @@ class LiberoResidualWorldDataConfig(Libero4in1DataConfig):
         return SelfForcedTrajectoryDataset(**kwargs)
 
 
+class LiberoTTTSequenceDataConfig(Libero4in1DataConfig):
+    def make_dataset(self, **kwargs: Any):
+        from examples.LIBERO_World.train_files.sequence_dataset import TTTSequenceDataset
+        return TTTSequenceDataset(**kwargs)
+
+
+class LiberoV3AnchorDataConfig(Libero4in1DataConfig):
+    def make_dataset(self, **kwargs: Any):
+        from examples.LIBERO_World.train_files.sequence_dataset import V3AnchorDataset
+        return V3AnchorDataset(**kwargs)
+
+
 ROBOT_TYPE_CONFIG_MAP = {
     "libero_residual_world_franka": LiberoResidualWorldDataConfig(),
+    "libero_ttt_sequence_franka": LiberoTTTSequenceDataConfig(),
+    "libero_v3_anchor_franka": LiberoV3AnchorDataConfig(),
 }
 
 ROBOT_TYPE_TO_EMBODIMENT_TAG: dict = {}
 
 DATASET_NAMED_MIXTURES = {
+    "libero_v3_anchor_all": [
+        (dataset_name, weight, "libero_v3_anchor_franka")
+        for dataset_name, weight, _ in OFFICIAL_LIBERO_MIXTURES["libero_all"]
+    ],
+    "libero_ttt_sequence_all": [
+        (dataset_name, weight, "libero_ttt_sequence_franka")
+        for dataset_name, weight, _ in OFFICIAL_LIBERO_MIXTURES["libero_all"]
+    ],
     "libero_residual_world_all": [
         (dataset_name, weight, "libero_residual_world_franka")
         for dataset_name, weight, _ in OFFICIAL_LIBERO_MIXTURES["libero_all"]

@@ -4,7 +4,7 @@ import argparse
 
 import numpy as np
 
-from examples.LIBERO.eval_files.model2libero_interface import ModelClient
+from examples.LIBERO_World.eval_files.model2libero_interface import ModelClient
 
 
 def main() -> None:
@@ -21,4 +21,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

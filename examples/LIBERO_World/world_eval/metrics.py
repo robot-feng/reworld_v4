@@ -99,6 +99,11 @@ def batch_world_metrics(output: dict[str, Tensor]) -> dict[str, Tensor]:
     metrics["rollout_gain_vs_direct_future"] = (
         stages["direct_future"]["future_mse"] - stages["rollout_future"]["future_mse"]
     ) / stages["direct_future"]["future_mse"].clamp_min(epsilon)
+    if "ttt_predicted_future_features" in output:
+        target = output["ttt_target_future_features"].float()
+        metrics["ttt_base_future_mse"] = _mean_square(output["ttt_base_future_features"].float() - target)
+        metrics["ttt_adapted_future_mse"] = _mean_square(output["ttt_predicted_future_features"].float() - target)
+        metrics["ttt_future_gain"] = metrics["ttt_base_future_mse"] - metrics["ttt_adapted_future_mse"]
     return metrics
 
 

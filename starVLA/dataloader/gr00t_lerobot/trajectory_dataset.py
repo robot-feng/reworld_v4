@@ -137,6 +137,13 @@ class SelfForcedTrajectoryDataset(LeRobotSingleDataset):
         )
         fixed_mid = self.data_cfg.get("trajectory_fixed_mid", None)
         self.fixed_mid = None if fixed_mid in (None, "", "null") else int(fixed_mid)
+        fixed_future = self.data_cfg.get("trajectory_fixed_future", None)
+        self.fixed_future = None if fixed_future in (None, "", "null") else int(fixed_future)
+        if self.fixed_future is not None and (
+            self.fixed_mid is None or self.fixed_future <= self.fixed_mid
+            or self.fixed_future > self.max_horizon
+        ):
+            raise ValueError("fixed future requires fixed_mid < fixed_future <= max_horizon")
         if self.max_horizon < 2:
             raise ValueError("trajectory_max_horizon must be at least two")
         if self.beta_alpha <= 0 or self.beta_beta <= 0:
@@ -172,6 +179,9 @@ class SelfForcedTrajectoryDataset(LeRobotSingleDataset):
         mid = min(self.fixed_mid, remaining - 1)
         if mid < 1:
             raise ValueError("trajectory_fixed_mid must leave room for a future frame")
+        if self.fixed_future is not None:
+            # Short episode tails retain strict ordering, as in fixed-mid mode.
+            return 0, mid, min(self.fixed_future, remaining)
         if remaining == mid + 1:
             return 0, mid, mid + 1
         fraction = torch.distributions.Beta(self.beta_alpha, self.beta_beta).sample()

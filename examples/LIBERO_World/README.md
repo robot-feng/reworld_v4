@@ -1,5 +1,9 @@
 # LIBERO World
 
+Inverse V3 的延迟反馈 TTT 训练、LIBERO 闭环评估和测试说明见
+[INVERSE_V3_TTT.md](INVERSE_V3_TTT.md)。V3 使用本目录的客户端/服务端传递
+episode 与真实帧号，沿用官方 LIBERO 仿真、动作后处理与成功率统计。
+
 这是官方 `examples/LIBERO` 的残差世界模型增量层。常规数据准备和仿真评估入口保持同名，并直接委托给官方实现；自定义代码只负责动态未来帧、残差世界模型训练以及离线世界模型评估。
 
 ## 公平对比原则
@@ -91,7 +95,8 @@ TASK_SUITE_NAME=libero_10 NUM_TRIALS_PER_TASK=50 \
 bash examples/LIBERO_World/eval_files/eval_libero.sh
 ```
 
-两个脚本直接委托官方 `examples/LIBERO/eval_files`，所以仿真协议、动作后处理和成功率口径完全相同。
+两个脚本通过本目录的适配入口复用官方实现。V3 额外管理反馈记忆状态，
+动作后处理和成功率口径沿用官方实现；非 TTT checkpoint 保持无状态调用。
 
 ### 推理 horizon 对照
 

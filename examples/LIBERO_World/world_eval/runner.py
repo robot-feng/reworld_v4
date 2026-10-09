@@ -183,7 +183,7 @@ def main(args: argparse.Namespace) -> None:
         "metadata": {
             "checkpoint": str(checkpoint),
             "config": str(config_path),
-            "evaluation_mode": "direct_and_self_forced",
+            "evaluation_mode": "direct_self_forced_and_feedback_ttt" if getattr(model, "ttt_enabled", False) else "direct_and_self_forced",
             "random_core": args.random_core,
             "seed": args.seed,
             "num_samples": len(records),

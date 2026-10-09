@@ -10,6 +10,7 @@ import torch
 import tyro
 
 from examples.LIBERO.eval_files import eval_libero as official_eval
+from examples.LIBERO_World.eval_files.model2libero_interface import ModelClient
 
 
 @dataclasses.dataclass
@@ -20,7 +21,7 @@ class Args(official_eval.Args):
     world_horizon: int | None = None
 
 
-class _WorldHorizonModelClient(official_eval.ModelClient):
+class _WorldHorizonModelClient(ModelClient):
     """Attach a world horizon to requests without changing the official client."""
 
     def __init__(self, *args, world_horizon: int, **kwargs) -> None:
@@ -58,6 +59,8 @@ def eval_libero(args: Args) -> None:
             if args.world_horizon is not None:
                 client = partial(_WorldHorizonModelClient, world_horizon=args.world_horizon)
                 stack.enter_context(patch.object(official_eval, "ModelClient", client))
+            else:
+                stack.enter_context(patch.object(official_eval, "ModelClient", ModelClient))
             if not args.record_video:
                 logging.info("Replay-video encoding is disabled")
                 stack.enter_context(patch.object(official_eval.imageio, "mimwrite", return_value=None))
