@@ -15,7 +15,10 @@ class TTTTrainer(TTTFeedbackEvalMixin, train_starvla.VLATrainer):
         result = super().prepare_training()
         # DeepSpeed finalizes rank count during prepare(). Refresh the displayed
         # effective batch now so 4 ranks x 16 x 2 reports 128, not the stale 64.
-        world_size = train_starvla.dist.get_world_size() if train_starvla.dist.is_initialized() else 1
+        world_size = max(
+            train_starvla.dist.get_world_size() if train_starvla.dist.is_initialized() else 1,
+            int(self.accelerator.num_processes),
+        )
         self.total_batch_size = (
             self.config.datasets.vla_data.per_device_batch_size
             * world_size * self.accelerator.gradient_accumulation_steps
