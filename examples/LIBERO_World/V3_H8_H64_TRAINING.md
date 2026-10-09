@@ -1,53 +1,54 @@
-# V3 从预训练编码器开始：8 / 64
+# V3：一次联合训练，horizon 8 / 64
 
-V2 文件不改动。没有可用的 96.7 策略权重，因此本次从本机预训练 Qwen3.5-0.8B、
-C-RADIOv4-SO400M 开始，重新训练 V3 的世界模型和动作头，不是恢复 96.7 checkpoint。
+本机没有96.7策略权重，从预训练 Qwen3.5-0.8B 和 C-RADIO 开始。
+V2 源文件不修改。此前两阶段流水线已停止，当前推荐入口只有一个训练任务：
 
-启动入口：`train_files/run_inverse_v3_h8_h64.sh`，使用 GPU 0、1、2、3，先后运行两个阶段。
-任何阶段失败都会停止脚本，不会用未完成的基础模型启动记忆训练。
+```bash
+bash examples/LIBERO_World/train_files/run_inverse_v3_h8_h64.sh
+```
 
-| 阶段 | 配置 | 训练内容 | 默认规模 |
-|---|---|---|---|
-| 基础训练 | `inverse_v3_h8_h64_stage1.yaml` | Qwen、世界模型、动作头；冻结 RADIO 和未启用的记忆 | 40,000 steps，4×8=32 samples/step |
-| 连续反馈训练 | `inverse_v3_h8_h64_stage2.yaml` | 冻结基础模型，只训练记忆；增加通过冻结动作头回传的动作损失 | 10,000 steps，4×2=8 sequences/step |
+等价入口是 `run_inverse_v3_joint.sh`，配置是 `inverse_v3_h8_h64_joint.yaml`。
+旧 stage1/stage2 配置仅保留作实验参考，不再由推荐入口启动。
 
-基础训练取 `[0,8,64]`，保留原 Self-Forcing 结构。尾部不足64帧时在同一 episode
-重新选合法起点，不缩短动作监督对应的8帧目标。实际四套本机 LIBERO 数据没有少于65帧的 episode。
+## 优化目标与梯度
 
-记忆训练查询的 horizon 是 **8 和64**，观测间隔是8帧。默认一段最多17个锚点
-`[0,8,...,128]`，使64帧预测到期后仍有后续目标可监督；128是训练段跨度，不是第三个预测 horizon。
-短 episode 使用较少的完整锚点，按长度分组，避免重复末帧和错误反馈。
-同一 `step_encoded()` 执行训练和推理的到期结算；即使动作条件模式只消费短预测，
-在线仍按配置收集64帧反馈，保持更新分布一致。
+- 每批序列最多17个锚点 `[0,8,...,128]`；预测 horizon 同时为8和64。
+- 基础分支从同一序列选 `[0,8,64]`，保留原有世界模型 self-forcing 和动作损失。
+- 连续反馈分支按因果顺序结算真实观测反馈，监督视觉预测和各锚点对应的动作。
+- 一次反向传播：`loss = base_loss + lambda(step) * (ttt_world_loss + ttt_action_loss)`。
+- `lambda(step) = 0.25 * min(1, (completed_steps + 1) / 2000)`，TTT 从首步参与，辅助损失平滑增权；
+  修正本身使用可学习的小门控（初值0.001），没有训练专用的额外推理倍率。
+- Qwen、世界模型通过基础分支更新；TTT、动作条件器、动作头通过反馈分支更新，
+  动作模块同时接收基础分支监督。RADIO 始终冻结。
 
-动作标签按每个真实观测锚点对齐。例如第24帧的条件监督第24–31帧动作，
-不复用第0帧动作。动作输入沿用原 LIBERO 归一化；当前序列数据路径仅支持 `action_mode=abs`。
-记忆 loss 为视觉残差 MSE + 0.1×冻结动作头的 flow-matching loss。
-每4个锚点截断状态与 pending key 的梯度（保留数值），可调 `ttt.tbptt_steps`。
+反馈分支对 Qwen/世界模型使用当前权重、eval 模式和 stop-gradient，避免保存17份 VLM 反向图。
+这是共享一个优化器的联合训练，但不是对全部历史 VLM 特征做完整时间反传。
+基础分支仍有完整的 VLM 梯度，两路模型参数每一步一起更新，无需中间 checkpoint 或手工切换。
+反馈状态每4个锚点截断梯度；数值保留，序列之间清空状态。
 
-这种序列训练覆盖多次反馈和长短反馈混合，修复了此前三帧训练的关键缺口；
-它仍不等于已经覆盖520帧整局、失败恢复或证明超过96.7。
-成功率必须等训练后在 LIBERO 仿真测量。先前审查文档中的三帧局限适用于旧的 `sequence_training=false` 路径。
+## 配置与观测
 
-日志、权重目录：
+四卡，每卡2条序列，全局8条序列；共40,000 steps。
+Qwen lr=1e-5，世界模型5e-5，动作模块与记忆1e-4，优化器另有2000步学习率 warmup。
+总训练样本数/计算量不能与旧4×8的三帧配置直接等同；本次每条序列还监督多个动作锚点。
 
-- `playground/Checkpoints/inverse_v3_h8_h64_pipeline_20261009.log`
-- `playground/Checkpoints/inverse_v3_h8_h64_stage1_20261009/`
-- `playground/Checkpoints/inverse_v3_h8_h64_stage2_20261009/`
+日志：`playground/Checkpoints/inverse_v3_h8_h64_joint_20261009.log`。
+权重：`playground/Checkpoints/inverse_v3_h8_h64_joint_20261009/`。
 
-复用 `eval_files/run_policy_server.sh` 和 `eval_files/eval_libero.py` 评估训练后的模型。
-基础阶段的策略不启用记忆；第二阶段启用 session/episode/帧号协议。
-评估需要与训练一致地传 proprio；本次两阶段 `include_state=true`，使用 Python 评估入口时
-加 `--args.include-state`。不要拿未传 state 的评估与传 state 的基线直接比较。
+梯度测试验证基础损失可更新 Qwen/世界模型，联合损失可更新全部目标模块，
+且反馈动作损失单独可以回传到记忆。周期 `train_feedback/*` 是训练批次诊断，不是成功率。
 
-## 阶段性验证记录（2026-10-09）
+最终使用 `eval_files/run_policy_server.sh` 和 `eval_files/eval_libero.py` 做 LIBERO 在线评估。
+使用 Python 评估入口时加 `--args.include-state`，匹配训练的 proprio 输入。
+当前离线 `world_eval` 图像可视化仍要求三帧输入，不能直接套用序列数据配置；
+最终在线评估和训练内连续反馈评估不受此限制。
 
-- 单元及集成测试：38 项通过，覆盖因果性、长反馈、多次更新、动作对齐和训练/在线状态一致性。
-- 真实数据基础训练：两个优化步通过，第二步 Qwen 梯度有限且非零。第一步世界模型残差输出层零初始化，使上游 Qwen 梯度为零，不能据此判断 VLM 冻结。
-- 四卡基础预检：3 steps，含评估及保存通过；总参数 1,377.852M，可训练 945.417M。
-- 四卡记忆预检：2 steps，含加载基础权重、序列训练、评估及保存通过。预检权重仅用于验证流程，不用于正式第二阶段初始化。
-- 第一阶段 Qwen 学习率 1e-5（含 warmup），冻结列表仅为 `vision_encoder,motion_memory`。第二阶段才冻结 Qwen。
-- 正式两阶段流水线已于本日启动；运行状态以日志为准。四卡采用 bf16 和 ZeRO-2，预检阶段每卡约30 GiB，显存未占满不能说明 VLM 未解冻。
+这项实验尚未证明超过 V2 的96.7，尤其需要单独报告 LIBERO long 的结果。
 
-当前离线 `world_eval` 图像可视化仍要求三帧输入，不能直接套用第二阶段的序列数据配置；
-其单次反馈指标也不能代表多次在线更新。第二阶段训练内评估走完整序列，最终策略成功率走 LIBERO 在线评估。
+## 本轮验证（2026-10-09）
+
+- 40 项测试通过；辅助权重日志调整后，相关17项回归通过。
+- 四卡真实 LIBERO 数据完成3步联合训练，周期反馈评估及 checkpoint 保存成功。
+- 946.615M 可训练参数；Qwen 与记忆均在优化器参数组中。
+- 预检末步 total_loss=1.294221，反馈修正初期极小，尚不能声称有收益。
+- 预检日志：`playground/Checkpoints/inverse_v3_preflight/joint_four_gpu.log`。

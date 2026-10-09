@@ -10,7 +10,13 @@ from starVLA.training import train_starvla
 
 
 class TTTTrainer(TTTFeedbackEvalMixin, train_starvla.VLATrainer):
-    pass
+    def _train_step(self, batch_vla, batch_vlm=None):
+        framework = self.accelerator.unwrap_model(self.model)
+        framework.training_step = self.completed_steps
+        metrics = super()._train_step(batch_vla, batch_vlm)
+        if getattr(framework, "joint_training", False):
+            metrics["ttt_aux_weight"] = framework.auxiliary_loss_weight()
+        return metrics
 
 
 def main():

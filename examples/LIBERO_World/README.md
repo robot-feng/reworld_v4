@@ -1,3 +1,5 @@
+> V3 当前实验入口：[8/64 一次联合训练](V3_H8_H64_TRAINING.md)。使用 `train_files/run_inverse_v3_h8_h64.sh`，无需两阶段切换。
+
 # LIBERO World
 
 Inverse V3 的延迟反馈 TTT 训练、LIBERO 闭环评估和测试说明见

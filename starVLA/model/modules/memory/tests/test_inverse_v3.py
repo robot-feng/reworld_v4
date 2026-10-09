@@ -28,13 +28,14 @@ class VLM(nn.Module):
         super().__init__()
         self.model = SimpleNamespace(config=SimpleNamespace(hidden_size=6))
         self.view_counts = []
+        self.scale = nn.Parameter(torch.ones(()))
 
     def build_qwenvl_inputs(self, images, instructions):
         self.view_counts.append([len(x) for x in images])
         return {"x": torch.tensor([np.asarray(views[0]).mean() / 255 for views in images]).float()}
 
     def forward(self, x, **kwargs):
-        return SimpleNamespace(hidden_states=(x[:, None, None].expand(-1, 3, 6),))
+        return SimpleNamespace(hidden_states=(x[:, None, None].expand(-1, 3, 6) * self.scale,))
 
 
 class Action(nn.Module):
@@ -43,9 +44,9 @@ class Action(nn.Module):
         return condition.mean((1, 2))[:, None, None].expand(-1, 8, 7)
 
 
-def make_model(enabled=True, mode="residual_plus_current"):
+def make_model(enabled=True, mode="residual_plus_current", joint=False):
     cfg = OmegaConf.create({"framework": {
-        "name": "QwenResidualWorldInverseV3", "ttt": {"enabled": enabled, "dim": 8, "grid_size": 2, "gate_init": 0.1},
+        "name": "QwenResidualWorldInverseV3", "ttt": {"enabled": enabled, "joint_training": joint, "sequence_training": joint, "dim": 8, "grid_size": 2, "gate_init": 0.1},
         "vision_view_indices": [1],
         "inverse_dynamics": {"condition_mode": mode},
         "residual_world": {"hidden_dim": 16, "num_layers": 1, "num_heads": 2, "head_dim": 8},

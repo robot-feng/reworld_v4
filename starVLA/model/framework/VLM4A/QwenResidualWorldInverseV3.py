@@ -1,11 +1,12 @@
 """V2 backbone plus causal motion/error fast memory.
 
-Default forward trains memory on a triplet; ttt.enabled=false restores the V2
-self-forcing path. Online calls require explicit frame steps and returned state.
+Joint mode combines the V2 self-forcing objective with causal sequence feedback.
+Legacy memory-only mode remains available; ttt.enabled=false restores V2. Online calls require explicit frame steps and returned state.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from contextlib import contextmanager
 import torch
 from torch.nn import functional as F
 
@@ -38,18 +39,25 @@ class QwenResidualWorldInverseV3(QwenResidualWorldInverseV2):
         super().__init__(config, **kwargs)
         cfg = self.config.framework.ttt
         self.ttt_enabled = bool(cfg.enabled)
+        self.joint_training = bool(cfg.get("joint_training", False))
+        self.training_step = 0
+        if self.joint_training and (not self.ttt_enabled or not cfg.get("sequence_training", False)):
+            raise ValueError("joint_training requires enabled sequential TTT")
         self.motion_memory = MotionErrorMemory(
             self._vision_hidden_dim(), self._vlm_hidden_dim(),
             dim=int(cfg.dim), grid_size=int(cfg.grid_size),
             inner_lr=float(cfg.inner_lr), forget_factor=float(cfg.forget_factor),
             gate_init=float(cfg.gate_init), value_mode=str(cfg.value_mode),
         )
-        if self.ttt_enabled:
+        if self.ttt_enabled and not self.joint_training:
             for module in self._base_modules():
                 module.requires_grad_(False)
                 module.eval()
-        else:
+        elif not self.ttt_enabled:
             self.motion_memory.requires_grad_(False)
+        if self.joint_training:
+            self.vision_encoder.requires_grad_(False)
+            self.vision_encoder.eval()
 
     def _base_modules(self):
         return (self.qwen_vl_interface, self.vision_encoder, self.residual_world,
@@ -57,9 +65,11 @@ class QwenResidualWorldInverseV3(QwenResidualWorldInverseV2):
 
     def train(self, mode=True):
         super().train(mode)
-        if getattr(self, "ttt_enabled", False):
+        if getattr(self, "ttt_enabled", False) and not self.joint_training:
             for module in self._base_modules():
                 module.eval()
+        if getattr(self, "joint_training", False):
+            self.vision_encoder.eval()
         return self
 
     def step_encoded(self, semantic, current, *, steps, horizons,
@@ -146,7 +156,66 @@ class QwenResidualWorldInverseV3(QwenResidualWorldInverseV2):
     def forward(self, examples=None, **kwargs):
         if not self.ttt_enabled:
             return super().forward(examples, **kwargs)
+        if self.joint_training:
+            return self.forward_joint(examples)
         return self.forward_ttt(examples)
+
+    @contextmanager
+    def feedback_backbone_eval(self):
+        # Feedback features use deterministic current weights, without retaining
+        # 17 VLM graphs. These modules still train through the baseline loss.
+        modules = (self.qwen_vl_interface, self.vision_encoder, self.residual_world)
+        modes = [module.training for module in modules]
+        try:
+            for module in modules:
+                module.eval()
+            yield
+        finally:
+            for module, mode in zip(modules, modes):
+                module.train(mode)
+
+    def joint_base_examples(self, examples):
+        result = []
+        for sample in examples:
+            trajectory = sample["trajectory"]
+            offsets = list(trajectory["observation_indices"])
+            desired = [0, self.action_horizon, self.long_inference_horizon]
+            if any(h not in offsets for h in desired):
+                raise ValueError("joint sequence must contain both configured horizon targets")
+            indices = [offsets.index(h) for h in desired]
+            selected = dict(trajectory, images=[trajectory["images"][i] for i in indices],
+                            observation_indices=desired)
+            if "frame_indices" in trajectory:
+                selected["frame_indices"] = [trajectory["frame_indices"][i] for i in indices]
+            item = dict(sample, image=trajectory["images"][0], trajectory=selected,
+                        action=trajectory["actions"][0])
+            if "states" in trajectory:
+                item["state"] = trajectory["states"][0]
+            result.append(item)
+        return result
+
+    def auxiliary_loss_weight(self):
+        cfg = self.config.framework.ttt
+        warmup = int(cfg.get("aux_warmup_steps", 2000))
+        target_weight = float(cfg.get("aux_loss_weight", 0.25))
+        if warmup < 0 or target_weight < 0:
+            raise ValueError("aux warmup and weight must be nonnegative")
+        fraction = min(1.0, (self.training_step + 1) / max(1, warmup))
+        return target_weight * fraction
+
+    def forward_joint(self, examples):
+        examples = [examples] if isinstance(examples, dict) else examples
+        # Preserve the established self-forcing and action objectives. The
+        # auxiliary branch trains memory + action modules in the SAME backward.
+        base = super().forward(self.joint_base_examples(examples))
+        with self.feedback_backbone_eval():
+            feedback = self.forward_ttt(examples)
+        weight = self.auxiliary_loss_weight()
+        output = dict(base)
+        output.update({k: v for k, v in feedback.items() if k != "loss"})
+        output["ttt_aux_weight"] = base["loss"].new_tensor(weight)
+        output["loss"] = base["loss"] + weight * feedback["loss"]
+        return output
 
     @torch.no_grad()
     def observe_and_predict(self, examples, *, step, state=None, horizons=None):

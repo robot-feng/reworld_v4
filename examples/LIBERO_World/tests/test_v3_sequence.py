@@ -116,3 +116,46 @@ def test_sequence_training_and_policy_share_short_long_feedback():
             state = out['ttt_state']
             torch.testing.assert_close(state.fast_weights, offline[i], atol=0, rtol=0)
         assert len(state.pending) > 1  # short-only action mode still tracks long feedback
+
+
+def test_joint_gradient_paths_and_auxiliary_warmup():
+    model = make_model(joint=True).train()
+    model.long_inference_horizon = 64
+    model.action_model = DifferentiableAction().train()
+    model.action_model.requires_grad_(True)
+    cfg = model.config.framework.ttt
+    cfg.horizons = [8, 64]
+    cfg.aux_warmup_steps = 10
+    cfg.aux_loss_weight = .25
+    cfg.action_loss_weight = 1.
+    sequence = make_sequence()
+    selected = model.joint_base_examples([sequence])[0]
+    assert selected['trajectory']['observation_indices'] == [0, 8, 64]
+    assert selected['trajectory']['frame_indices'] == [100, 108, 164]
+    np.testing.assert_equal(selected['action'], sequence['trajectory']['actions'][0])
+    output = model([sequence])
+    assert output['ttt_aux_weight'].item() == pytest.approx(.025)
+    output['loss'].backward()
+    for name in ['qwen_vl_interface', 'residual_world', 'action_conditioner', 'action_model', 'motion_memory']:
+        parameters = list(getattr(model, name).parameters())
+        assert any(p.grad is not None and p.grad.abs().max() > 0 for p in parameters), name
+        assert all(p.grad is None or torch.isfinite(p.grad).all() for p in parameters), name
+    assert model.qwen_vl_interface.training and model.residual_world.training
+    assert not model.vision_encoder.training
+    # Action feedback alone must reach the memory, without retaining VLM graphs.
+    model.zero_grad(set_to_none=True)
+    with model.feedback_backbone_eval():
+        feedback = model.forward_ttt([sequence])
+    feedback['ttt_action_loss'].backward()
+    assert model.motion_memory.gate.grad.abs() > 0
+    assert model.qwen_vl_interface.scale.grad is None
+    assert all(p.grad is None for p in model.residual_world.parameters())
+    model.training_step = 100
+    assert model([sequence])['ttt_aux_weight'].item() == pytest.approx(.25)
+
+
+def test_joint_rejects_sequence_missing_long_target():
+    model = make_model(joint=True)
+    model.long_inference_horizon = 64
+    with pytest.raises(ValueError, match='both configured horizon'):
+        model.joint_base_examples([make_sequence(8)])
