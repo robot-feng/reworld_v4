@@ -4,6 +4,7 @@ set -euo pipefail
 STARVLA_DIR="${STARVLA_DIR:-$(cd "$(dirname "$0")/../../.." && pwd)}"
 STARVLA_PYTHON="${STARVLA_PYTHON:-/data/miniconda3/envs/ResWAM/bin/python}"
 MASTER_PORT="${MASTER_PORT:-29864}"
+CONFIG_YAML="${CONFIG_YAML:-examples/LIBERO_World/train_files/inverse_v3_h8_h64_joint.yaml}"
 cd "${STARVLA_DIR}"
 export PYTHONPATH="${STARVLA_DIR}:${PYTHONPATH:-}"
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1,2,3}"
@@ -18,7 +19,7 @@ export NO_ALBUMENTATIONS_UPDATE=1
 export PYTHONUNBUFFERED=1
 export PYTHONDONTWRITEBYTECODE=1
 "${STARVLA_PYTHON}" -m accelerate.commands.launch \
-  --config_file starVLA/config/deepseeds/deepspeed_zero2_v3_accum4.yaml \
+  --config_file starVLA/config/deepseeds/deepspeed_zero2_v3_accum2.yaml \
   --num_processes 4 --main_process_port "${MASTER_PORT}" \
   examples/LIBERO_World/train_files/train_inverse_v3_ttt.py \
-  --config_yaml examples/LIBERO_World/train_files/inverse_v3_h8_h64_joint.yaml "$@"
+  --config_yaml "${CONFIG_YAML}" "$@"

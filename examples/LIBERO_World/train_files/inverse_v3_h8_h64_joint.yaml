@@ -1,4 +1,4 @@
-run_id: inverse_v3_h8_h64_short_ttt_b128_20261009
+run_id: inverse_v3_h8_h64_short_ttt_micro16_accum2_b128_20261009
 run_root_dir: /data/tzq/reworld_v4/playground/Checkpoints
 seed: 42
 wandb_entity: local
@@ -86,7 +86,7 @@ datasets:
     sequential_step_sampling: false
     CoT_prompt: Your task is {instruction}. To identify the key objects for your task.
       Locate their bounding boxes in [x1,y1,x2,y2] format.
-    per_device_batch_size: 8
+    per_device_batch_size: 16
     load_all_data_for_training: false
     video_backend: pyav
     include_state: true
@@ -121,7 +121,7 @@ trainer:
   weight_decay: 0.0
   logging_frequency: 10
   gradient_clipping: 1.0
-  gradient_accumulation_steps: 4
+  gradient_accumulation_steps: 2
   gradient_checkpointing: true
   optimizer:
     name: AdamW
