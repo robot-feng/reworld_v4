@@ -28,7 +28,7 @@ bash examples/LIBERO_World/train_files/run_inverse_v3_h8_h64.sh
 
 ## 配置与观测
 
-四卡，每卡有效32条序列，全局128条序列；共40,000 optimizer steps。显存 micro-batch 为16，梯度累积2步（每步仍处理16条/卡，两次累积后有效32条/卡）。
+四卡，每卡有效32条序列，全局128条序列；共40,000 optimizer steps。显存 micro-batch 为8，梯度累积4步（每步处理8条/卡，四次累积后有效32条/卡）。
 Qwen lr=1e-5，世界模型5e-5，动作模块与记忆1e-4，优化器另有2000步学习率 warmup。
 总训练样本数/计算量不能与旧4×8的三帧配置直接等同；本次每条序列还监督多个动作锚点。
 
@@ -63,7 +63,10 @@ Qwen lr=1e-5，世界模型5e-5，动作模块与记忆1e-4，优化器另有200
 延迟的64帧预测还要保留计算图直到目标帧到达。TBPTT每4个锚点截断 fast-weight/key 的梯度，
 但各项 loss 的计算图要留到统一 backward，因此显存随 micro-batch 和有效锚点数增长。
 
-四卡每卡16 micro-batch 的单步实测通过，峰值约79 GiB/80 GiB；每卡32直接运行已实测 OOM。
-正式设置用16×2累积达到有效32/卡、全局128，同时避免把32条序列的激活同时放入显存。
+四卡每卡32直接运行已实测 OOM；16 micro-batch 峰值约79 GiB，正式跑到第2步时因序列长度波动再次 OOM。
+正式设置用8×4累积达到有效32/卡、全局128，给激活显存留出余量，且每次参数更新的全局样本量不变。
 后续还可用 activation checkpoint 或分段 backward 降低峰值；分段 backward 需要仔细处理跨段64帧延迟监督的梯度，
 不能简单切开计算，否则会改变训练信号。
+
+四卡 8×4 累积预检已完成一个有效优化步并保存 checkpoint，峰值显存约47 GiB/卡；
+对应日志为 `playground/Checkpoints/inverse_v3_preflight/joint_micro8_accum4_four_gpu.log`。

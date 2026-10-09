@@ -18,7 +18,7 @@ export NO_ALBUMENTATIONS_UPDATE=1
 export PYTHONUNBUFFERED=1
 export PYTHONDONTWRITEBYTECODE=1
 "${STARVLA_PYTHON}" -m accelerate.commands.launch \
-  --config_file starVLA/config/deepseeds/deepspeed_zero2_v3_accum2.yaml \
+  --config_file starVLA/config/deepseeds/deepspeed_zero2_v3_accum4.yaml \
   --num_processes 4 --main_process_port "${MASTER_PORT}" \
   examples/LIBERO_World/train_files/train_inverse_v3_ttt.py \
   --config_yaml examples/LIBERO_World/train_files/inverse_v3_h8_h64_joint.yaml "$@"
