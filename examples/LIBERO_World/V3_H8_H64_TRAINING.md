@@ -28,7 +28,7 @@ bash examples/LIBERO_World/train_files/run_inverse_v3_h8_h64.sh
 
 ## 配置与观测
 
-四卡，每卡2条序列，全局8条序列；共40,000 steps。
+四卡，每卡有效32条序列，全局128条序列；共40,000 optimizer steps。显存 micro-batch 为16，梯度累积2步（每步仍处理16条/卡，两次累积后有效32条/卡）。
 Qwen lr=1e-5，世界模型5e-5，动作模块与记忆1e-4，优化器另有2000步学习率 warmup。
 总训练样本数/计算量不能与旧4×8的三帧配置直接等同；本次每条序列还监督多个动作锚点。
 
@@ -52,3 +52,18 @@ Qwen lr=1e-5，世界模型5e-5，动作模块与记忆1e-4，优化器另有200
 - 946.615M 可训练参数；Qwen 与记忆均在优化器参数组中。
 - 预检末步 total_loss=1.294221，反馈修正初期极小，尚不能声称有收益。
 - 预检日志：`playground/Checkpoints/inverse_v3_preflight/joint_four_gpu.log`。
+
+## 序列缓存与显存
+
+17 个锚点是每隔8帧取一张观测，覆盖 `[0,128]`。每个时刻只编码当前帧并因果结算到期反馈；
+`EpisodeState` 保存 `[B,dim,dim]` 的 fast weights 及尚未到期的少量 key/origin/base prediction，
+不会预先把17帧的视觉特征堆到 GPU。数据集会在CPU侧加载整段图像。
+
+训练显存主要来自需要反向传播的锚点损失：最多16个动作头调用和一串记忆查询/更新图，
+延迟的64帧预测还要保留计算图直到目标帧到达。TBPTT每4个锚点截断 fast-weight/key 的梯度，
+但各项 loss 的计算图要留到统一 backward，因此显存随 micro-batch 和有效锚点数增长。
+
+四卡每卡16 micro-batch 的单步实测通过，峰值约79 GiB/80 GiB；每卡32直接运行已实测 OOM。
+正式设置用16×2累积达到有效32/卡、全局128，同时避免把32条序列的激活同时放入显存。
+后续还可用 activation checkpoint 或分段 backward 降低峰值；分段 backward 需要仔细处理跨段64帧延迟监督的梯度，
+不能简单切开计算，否则会改变训练信号。

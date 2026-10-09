@@ -1,6 +1,7 @@
 """Reuse the standard StarVLA trainer with causal TTT periodic diagnostics."""
 
 import argparse
+import torch
 from unittest.mock import patch
 
 from omegaconf import OmegaConf
@@ -10,10 +11,37 @@ from starVLA.training import train_starvla
 
 
 class TTTTrainer(TTTFeedbackEvalMixin, train_starvla.VLATrainer):
+    def prepare_training(self):
+        result = super().prepare_training()
+        # DeepSpeed finalizes rank count during prepare(). Refresh the displayed
+        # effective batch now so 4 ranks x 16 x 2 reports 128, not the stale 64.
+        world_size = train_starvla.dist.get_world_size() if train_starvla.dist.is_initialized() else 1
+        self.total_batch_size = (
+            self.config.datasets.vla_data.per_device_batch_size
+            * world_size * self.accelerator.gradient_accumulation_steps
+        )
+        return result
+
     def _train_step(self, batch_vla, batch_vlm=None):
         framework = self.accelerator.unwrap_model(self.model)
         framework.training_step = self.completed_steps
-        metrics = super()._train_step(batch_vla, batch_vlm)
+        gas = self.accelerator.gradient_accumulation_steps
+        if not hasattr(self, "_v3_micro_step"):
+            self._v3_micro_step = 0
+        with self.accelerator.accumulate(self.model):
+            if self._v3_micro_step % gas == 0:
+                self.optimizer.zero_grad()
+            with torch.autocast("cuda", dtype=torch.bfloat16):
+                output = self.model.forward(batch_vla)
+                total_loss, loss_metrics = train_starvla.extract_model_losses(output)
+            self.accelerator.backward(total_loss)
+            if self.accelerator.sync_gradients and self.config.trainer.gradient_clipping is not None:
+                self.accelerator.clip_grad_norm_(self.model.parameters(), self.config.trainer.gradient_clipping)
+            self.optimizer.step()
+            if self.accelerator.sync_gradients:
+                self.lr_scheduler.step()
+        self._v3_micro_step += 1
+        metrics = {name: value.item() for name, value in loss_metrics.items()}
         if getattr(framework, "joint_training", False):
             metrics["ttt_aux_weight"] = framework.auxiliary_loss_weight()
         return metrics
