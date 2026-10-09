@@ -1,4 +1,4 @@
-run_id: inverse_v3_h8_h64_joint_b128_micro8_20261009
+run_id: inverse_v3_h8_h64_short_ttt_b128_20261009
 run_root_dir: /data/tzq/reworld_v4/playground/Checkpoints
 seed: 42
 wandb_entity: local
@@ -12,7 +12,6 @@ framework:
     sequence_training: true
     horizons:
     - 8
-    - 64
     tbptt_steps: 4
     action_loss_weight: 1.0
     dim: 128
@@ -97,7 +96,7 @@ datasets:
     trajectory_fixed_mid: 8
     trajectory_fixed_future: 64
     ttt_stride: 8
-    ttt_anchors: 17
+    ttt_anchors: 9
 trainer:
   max_train_steps: 40000
   pretrained_checkpoint: null

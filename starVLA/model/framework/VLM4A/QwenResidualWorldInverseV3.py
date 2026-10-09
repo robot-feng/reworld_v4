@@ -43,6 +43,13 @@ class QwenResidualWorldInverseV3(QwenResidualWorldInverseV2):
         self.training_step = 0
         if self.joint_training and (not self.ttt_enabled or not cfg.get("sequence_training", False)):
             raise ValueError("joint_training requires enabled sequential TTT")
+        if self.joint_training:
+            feedback_horizons = [int(h) for h in cfg.get("horizons", [self.action_horizon])]
+            if feedback_horizons != [self.action_horizon]:
+                raise ValueError(
+                    "joint V3 TTT feedback must use exactly action_horizon "
+                    f"({self.action_horizon}); train longer horizons in the base world-model branch"
+                )
         self.motion_memory = MotionErrorMemory(
             self._vision_hidden_dim(), self._vlm_hidden_dim(),
             dim=int(cfg.dim), grid_size=int(cfg.grid_size),
@@ -163,7 +170,7 @@ class QwenResidualWorldInverseV3(QwenResidualWorldInverseV2):
     @contextmanager
     def feedback_backbone_eval(self):
         # Feedback features use deterministic current weights, without retaining
-        # 17 VLM graphs. These modules still train through the baseline loss.
+        # per-anchor VLM graphs. These modules still train through the baseline loss.
         modules = (self.qwen_vl_interface, self.vision_encoder, self.residual_world)
         modes = [module.training for module in modules]
         try:
@@ -253,8 +260,8 @@ class QwenResidualWorldInverseV3(QwenResidualWorldInverseV2):
                          time_vector(hs[0], current.shape[0], current.device, positive=True)):
                 raise ValueError("long horizon must exceed short horizon")
         if bool(self.config.framework.ttt.get("sequence_training", False)):
-            # Even a short-only action conditioner must collect the same long
-            # feedback used by sequence training, at the same observation cadence.
+            # Keep online feedback horizons aligned with the configured causal
+            # sequence-training objective. Joint training uses only action_horizon.
             for h in self.config.framework.ttt.horizons:
                 if not any(torch.all(time_vector(existing, current.shape[0], current.device, positive=True) == int(h))
                            for existing in hs):
